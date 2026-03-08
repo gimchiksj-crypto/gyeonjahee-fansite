@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" role="img" aria-labelledby="title desc">
+  <title id="title">Playlist visual</title>
+  <desc id="desc">Playlist stack style abstract poster.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#132742"/>
+      <stop offset="100%" stop-color="#09111d"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="720" fill="url(#bg)"/>
+  <rect x="118" y="150" width="438" height="90" rx="24" fill="#8edcff" opacity="0.18" stroke="#8edcff" stroke-opacity="0.4"/>
+  <rect x="148" y="280" width="428" height="90" rx="24" fill="#ffcf53" opacity="0.16" stroke="#ffcf53" stroke-opacity="0.38"/>
+  <rect x="178" y="410" width="418" height="90" rx="24" fill="#ffffff" opacity="0.08" stroke="#ffffff" stroke-opacity="0.24"/>
+  <g fill="#ffffff" opacity="0.3">
+    <circle cx="178" cy="195" r="18"/>
+    <circle cx="208" cy="325" r="18"/>
+    <circle cx="238" cy="455" r="18"/>
+  </g>
+  <g opacity="0.12" stroke="#ffffff">
+    <path d="M0 90h720M0 180h720M0 270h720M0 360h720M0 450h720M0 540h720M0 630h720"/>
+    <path d="M90 0v720M180 0v720M270 0v720M360 0v720M450 0v720M540 0v720M630 0v720"/>
+  </g>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 540" role="img" aria-labelledby="title desc">
+  <title id="title">Preview archive</title>
+  <desc id="desc">Compact archive visual with rose and gold accent.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#2a324e"/>
+      <stop offset="100%" stop-color="#121729"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="540" fill="url(#bg)"/>
+  <circle cx="356" cy="154" r="86" fill="#ffcf53" opacity="0.24"/>
+  <g opacity="0.12" stroke="#ffffff">
+    <path d="M0 90h480M0 180h480M0 270h480M0 360h480M0 450h480"/>
+    <path d="M80 0v540M160 0v540M240 0v540M320 0v540M400 0v540"/>
+  </g>
+  <rect x="88" y="120" width="220" height="70" rx="22" fill="#8edcff" opacity="0.18" stroke="#8edcff" stroke-opacity="0.38"/>
+  <rect x="118" y="232" width="230" height="70" rx="22" fill="#ffffff" opacity="0.1" stroke="#ffffff" stroke-opacity="0.2"/>
+  <rect x="148" y="344" width="240" height="70" rx="22" fill="#ffcf53" opacity="0.14" stroke="#ffcf53" stroke-opacity="0.34"/>
+</svg>

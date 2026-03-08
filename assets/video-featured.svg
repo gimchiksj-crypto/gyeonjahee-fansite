@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Featured visual</title>
+  <desc id="desc">Sky blue and gold abstract featured poster.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#173f67"/>
+      <stop offset="100%" stop-color="#081728"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="20%" cy="18%" r="40%">
+      <stop offset="0%" stop-color="#8edcff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#8edcff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="84%" cy="78%" r="34%">
+      <stop offset="0%" stop-color="#ffcf53" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffcf53" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#glow1)"/>
+  <rect width="1280" height="720" fill="url(#glow2)"/>
+  <g opacity="0.16" stroke="#ffffff">
+    <path d="M0 90h1280M0 180h1280M0 270h1280M0 360h1280M0 450h1280M0 540h1280M0 630h1280"/>
+    <path d="M120 0v720M280 0v720M440 0v720M600 0v720M760 0v720M920 0v720M1080 0v720"/>
+  </g>
+  <g>
+    <circle cx="290" cy="250" r="118" fill="#b8edff" opacity="0.82"/>
+    <circle cx="290" cy="250" r="88" fill="#0f3659"/>
+    <path d="M510 170h480" stroke="#ffffff" stroke-opacity="0.28" stroke-width="6"/>
+    <path d="M510 245h380" stroke="#ffffff" stroke-opacity="0.18" stroke-width="20"/>
+    <path d="M510 315h320" stroke="#ffffff" stroke-opacity="0.12" stroke-width="16"/>
+    <rect x="510" y="430" width="330" height="120" rx="26" fill="#081a2d" stroke="#8edcff" stroke-opacity="0.35"/>
+    <circle cx="880" cy="510" r="84" fill="#ffcf53" opacity="0.9"/>
+    <circle cx="880" cy="510" r="54" fill="#10243a"/>
+  </g>
+</svg>
