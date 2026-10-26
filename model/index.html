@@ -65,8 +65,7 @@
       <a href="../index.html">← 팬사이트로</a>
     </header>
     <div class="panel" role="toolbar" aria-label="보기 설정">
-      <button data-mode="photo" aria-pressed="true">사진 투영</button>
-      <button data-mode="vertex" aria-pressed="false">버텍스 컬러</button>
+      <button data-mode="texture" aria-pressed="true">텍스처</button>
       <button data-mode="clay" aria-pressed="false">형태만</button>
       <button id="spin" aria-pressed="true">자동 회전</button>
       <a id="download" href="gyeonjahee.glb" download><button tabindex="-1">GLB 받기</button></a>
@@ -103,100 +102,31 @@
       floor.rotation.x = -Math.PI / 2;
       scene.add(floor);
 
-      // 사진 3장을 표면 방향에 따라 섞어서 투영한다 (좌표 정렬값은 projection.json)
-      function photoMaterial(proj, tex) {
-        const view = (p) => new THREE.Vector4(p.width, p.height, p.bottom, p.center);
-        return new THREE.ShaderMaterial({
-          uniforms: {
-            texFront: { value: tex.front },
-            texBack: { value: tex.back },
-            texSide: { value: tex.side },
-            texSide2: { value: tex.side2 },
-            front: { value: view(proj.front) },
-            back: { value: view(proj.back) },
-            side: { value: view(proj.side) },
-            side2: { value: view(proj.side2) },
-            scales: { value: new THREE.Vector4(proj.front.scale, proj.back.scale, proj.side.scale, proj.side2.scale) },
-            lightDir: { value: new THREE.Vector3(0.4, 0.7, 0.6).normalize() },
-          },
-          vertexShader: `
-            varying vec3 vPos; varying vec3 vNormal; varying vec3 vViewNormal; varying vec4 vColor;
-            attribute vec4 color; // rgb: 꼭짓점 색, a: 측면 사진을 써도 되는 정도(팔은 0)
-            void main() {
-              vPos = position; vNormal = normal; vColor = color;
-              vViewNormal = normalize(normalMatrix * normal);
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }`,
-          fragmentShader: `
-            uniform sampler2D texFront, texBack, texSide, texSide2;
-            uniform vec4 front, back, side, side2; // width, height, bottom, center
-            uniform vec4 scales; uniform vec3 lightDir;
-            varying vec3 vPos; varying vec3 vNormal; varying vec3 vViewNormal; varying vec4 vColor;
-            vec2 toUV(vec4 v, float s, float u, float y, bool mirror) {
-              float col = v.w + u / s;
-              if (mirror) col = v.x - 1.0 - col;
-              float row = v.z - y / s;
-              return vec2((col + 0.5) / v.x, 1.0 - (row + 0.5) / v.y);
-            }
-            void main() {
-              vec3 n = normalize(vNormal);
-              vec4 cf = texture2D(texFront, toUV(front, scales.x, vPos.x, vPos.y, false));
-              vec4 cb = texture2D(texBack, toUV(back, scales.y, vPos.x, vPos.y, true));
-              // 왼쪽 옆면은 첫 측면 사진, 오른쪽 옆면은 두 번째 측면 사진
-              vec4 cs = n.x >= 0.0
-                ? texture2D(texSide, toUV(side, scales.z, vPos.z, vPos.y, false))
-                : texture2D(texSide2, toUV(side2, scales.w, vPos.z, vPos.y, false));
-              // 옆을 향한 면(n.z≈0)에서는 정면·후면 사진을 반반 섞어 경계가 계단처럼 보이지 않게 한다
-              float wf = pow(max(n.z + 0.25, 0.0), 2.0) * step(0.5, cf.a);
-              float wb = pow(max(-n.z + 0.25, 0.0), 2.0) * step(0.5, cb.a);
-              // 측면 사진은 바깥쪽 면만 보여준다: 허벅지 안쪽처럼 몸 중심을 향한 면에는 쓰지 않는다
-              float outward = abs(vPos.x) > 0.03 ? clamp(sign(vPos.x) * n.x * 5.0, 0.0, 1.0) : 1.0;
-              float ws = n.x * n.x * step(0.5, cs.a) * vColor.a * outward;
-              float total = wf + wb + ws;
-              vec3 c = total > 0.01 ? (cf.rgb * wf + cb.rgb * wb + cs.rgb * ws) / total : (n.z >= 0.0 ? cf.rgb : cb.rgb);
-              float lambert = max(dot(normalize(vViewNormal), lightDir), 0.0);
-              gl_FragColor = vec4(c * (0.78 + 0.32 * lambert), 1.0);
-              #include <colorspace_fragment>
-            }`,
-        });
-      }
-
       const status = document.getElementById("status");
-      const texLoader = new THREE.TextureLoader();
-      const loadTex = (name) =>
-        texLoader.loadAsync(`textures/${name}.webp`).then((t) => {
-          t.colorSpace = THREE.SRGBColorSpace;
-          t.minFilter = THREE.LinearFilter;
-          t.generateMipmaps = false;
-          return t;
-        });
-
       try {
-        const [gltf, proj, front, back, side, side2] = await Promise.all([
-          new GLTFLoader().loadAsync("gyeonjahee.glb"),
-          fetch("projection.json").then((r) => r.json()),
-          loadTex("front"),
-          loadTex("back"),
-          loadTex("side"),
-          loadTex("side2"),
-        ]);
-        const mesh = gltf.scene.getObjectByProperty("isMesh", true);
-        const materials = {
-          photo: photoMaterial(proj, { front, back, side, side2 }),
-          vertex: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
-          clay: new THREE.MeshStandardMaterial({ color: 0xe8d6cf, roughness: 0.6 }),
+        const gltf = await new GLTFLoader().loadAsync("gyeonjahee.glb");
+        const meshes = [];
+        gltf.scene.traverse((o) => o.isMesh && meshes.push(o));
+        // 모드별 재질: 원래 재질(텍스처·꼭짓점 색) / 형태만
+        const clay = new THREE.MeshStandardMaterial({ color: 0xe8d6cf, roughness: 0.6 });
+        const original = new Map(meshes.map((m) => [m, m.material]));
+        const modes = {
+          texture: (m) => original.get(m),
+          clay: () => clay,
         };
-        mesh.material = materials.photo;
         scene.add(gltf.scene);
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.6));
-        const key = new THREE.DirectionalLight(0xffffff, 1.6);
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.2));
+        const key = new THREE.DirectionalLight(0xffffff, 1.4);
         key.position.set(1.5, 2.5, 2);
         scene.add(key);
+        const fill = new THREE.DirectionalLight(0xffffff, 0.8);
+        fill.position.set(-2, 1.5, -1.5);
+        scene.add(fill);
         status.remove();
 
         document.querySelectorAll("[data-mode]").forEach((btn) =>
           btn.addEventListener("click", () => {
-            mesh.material = materials[btn.dataset.mode];
+            meshes.forEach((m) => (m.material = modes[btn.dataset.mode](m)));
             document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
           })
         );
