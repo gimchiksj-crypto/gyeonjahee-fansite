@@ -57,6 +57,15 @@ def load_obj(path: Path):
     return np.array(verts), np.array(uvs), np.array(faces), np.array(face_uvs), np.array(groups)
 
 
+def load_target(base_dir: Path, name: str, n: int) -> np.ndarray:
+    """target 하나의 꼭짓점 변위(미터, 쉬는 자세 기준)."""
+    npz = np.load(base_dir / "targets.npz")
+    key = name.replace("/", "__")
+    d = np.zeros((n, 3))
+    d[npz[key + "__index"].astype(int)] = npz[key + "__vector"].astype(float) * 1e-4  # 1/1000 dm → m
+    return d
+
+
 class Body:
     def __init__(self, base_dir: Path, targets: dict[str, float]):
         verts, self.uvs, faces, face_uvs, groups = load_obj(base_dir / "base.obj")

@@ -68,12 +68,14 @@ def pix(view: View, u, y, img) -> np.ndarray:
     return out
 
 
-def in_hull(p: np.ndarray, front: View, back: View, sides: list[View]) -> np.ndarray:
-    x, y, z = p.T
-    inside = pix(front, x, y, front.mask) & pix(back, x, y, back.mask)
+def in_hull(p: np.ndarray, front: View, back: View, sides: list[View], warp) -> np.ndarray:
+    """사진 윤곽(정면·후면·측면) 안쪽인지. 얼굴 정렬 변환을 거친 사진 좌표로 본다."""
+    fu, fy = warp.front_uv(p)
+    su, sy = warp.side_uv(p)
+    inside = pix(front, fu, fy, front.mask) & pix(back, fu, fy, back.mask)
     side = np.zeros(len(p), bool)
     for s in sides:
-        side |= pix(s, z, y, s.mask)
+        side |= pix(s, su, sy, s.mask)
     return inside & side
 
 
@@ -93,11 +95,13 @@ def hair_cap(v, tris, head_w, chin_y, brow_y, neck_y, front: View, back: View, s
     x, y, z = p.T
     w_f = np.clip(n[:, 2], 0, None) ** 2 * proj.d_front.visible(p)
     w_b = np.clip(-n[:, 2], 0, None) ** 2 * proj.d_back.visible(p)
-    score = w_f * pix(front, x, y, hair_f) + w_b * pix(back, x, y, hair_b)
+    fu, fy = proj.warp.front_uv(p)
+    su, sy = proj.warp.side_uv(p)
+    score = w_f * pix(front, fu, fy, hair_f) + w_b * pix(back, fu, fy, hair_b)
     total = w_f + w_b
     for s, hs in zip(sides, hair_s):
         w_s = n[:, 0] ** 2 / len(sides)
-        score += w_s * pix(s, z, y, hs)
+        score += w_s * pix(s, su, sy, hs)
         total += w_s
     hairness = score / np.maximum(total, 1e-6)
     # 얼굴(눈썹 아래 정면)은 속눈썹·눈동자가 어두워도 머리카락이 아니다
@@ -112,7 +116,7 @@ def hair_cap(v, tris, head_w, chin_y, brow_y, neck_y, front: View, back: View, s
     alive = np.ones(len(p), bool)
     for k in range(1, int(MAX_THICKNESS / STEP) + 1):
         q = p + n * (k * STEP)
-        alive &= in_hull(q, front, back, sides)
+        alive &= in_hull(q, front, back, sides, proj.warp)
         thick[alive] = k * STEP
     # 가장자리로 갈수록 얇게: 머리카락 끝이 피부에 붙어 들뜬 조각이 생기지 않게
     edge = np.clip((hairness - 0.4) / 0.45, 0, 1)

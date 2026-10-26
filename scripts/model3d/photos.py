@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
+EDGE_PX = 14  # 이 픽셀 거리 안쪽의 윤곽 근처 색은 덜 믿는다
 HEIGHT_M = 1.65  # 사진 속 인물 키(머리카락 끝~발끝, 미터). 모든 좌표의 기준 축척
 
 # 정면 사진 기준 해부학적 높이(픽셀 행). 이 사진 세트에 맞춘 값이다.
@@ -17,7 +18,13 @@ FRONT_CROTCH_ROW = 785  # 가랑이: 이 아래 덩어리는 다리
 FRONT_UNDERBUST_ROW = 522  # 브라 아랫선(가슴 아래 끝)
 
 # 얼굴 기준점(픽셀). 정면은 (열, 행), 측면은 얼굴이 오른쪽을 보는 사진의 (열, 행)
-FRONT_LANDMARKS = {"eye_r": (442, 147), "eye_l": (490, 147), "nose": (470, 182), "mouth": (467, 207), "chin": (467, 245)}
+FRONT_LANDMARKS = {
+    "eye_r": (442, 147),
+    "eye_l": (490, 147),
+    "nose": (470, 182),
+    "mouth": (467, 207),
+    "chin": (467, 245),
+}
 SIDE_LANDMARKS = {
     "side.png": {"eye": (545, 135), "nose": (572, 165), "chin": (552, 225), "ear": (467, 170)},
     "side2.png": {"eye": (525, 135), "nose": (556, 165), "chin": (532, 225), "ear": (450, 170)},
@@ -67,6 +74,8 @@ class View:
         # 그 밖은 가장 가까운 안쪽 픽셀 색으로 채운다: 표면이 사진 경계를 살짝 넘어도 배경색이 묻지 않게
         _, (ri, ci) = ndi.distance_transform_edt(~self.inner, return_indices=True)
         self.filled = rgb[ri, ci]
+        # 윤곽 근처는 주황 배경이 반사돼(림 라이트) 피부가 붉게 찍힌다: 안쪽일수록 믿는다
+        self.edge_w = np.clip(ndi.distance_transform_edt(mask) / EDGE_PX, 0, 1) ** 2
         lum = rgb.astype(float).mean(2)
         self.hair = mask & (lum < 70)
         # 피부에 그리면 안 되는 픽셀: 머리카락 + 가닥 사이로 배경이 비쳐 붉게 뜬 머리카락
@@ -99,7 +108,7 @@ class View:
         ok = self.inner[r, c] & (cols >= 0) & (cols < self.w) & (rows >= 0) & (rows < self.h)
         if skin is not None:
             ok &= ~(skin & self.hairish[r, c])
-        return self.filled[r, c].astype(float), ok.astype(float)
+        return self.filled[r, c].astype(float), ok * np.maximum(self.edge_w[r, c], 0.02)
 
     def run_at(self, y, u_hint=0.0, mask=None):
         """높이 y에서 u_hint를 포함하는(없으면 가장 가까운) 덩어리의 (u0, u1)."""

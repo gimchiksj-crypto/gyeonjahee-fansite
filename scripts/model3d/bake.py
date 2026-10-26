@@ -56,10 +56,20 @@ class DepthMap:
         return self.sign * p[:, self.depth] >= self.nearest(p[:, self.axis], p[:, 1]) - VISIBLE_TOL
 
 
+class NoWarp:
+    def front_uv(self, p):
+        return p[:, 0], p[:, 1]
+
+    def side_uv(self, p):
+        return p[:, 2], p[:, 1]
+
+
 class Projector:
     """위치·법선 → 색. 정면·후면·측면 사진을 표면 방향과 가림 여부에 따라 섞는다."""
 
-    def __init__(self, front: View, back: View, sides: list[View], v: np.ndarray, tris: np.ndarray):
+    def __init__(self, front: View, back: View, sides: list[View], v: np.ndarray, tris: np.ndarray, warp=None):
+        """warp: 사진에서 색을 찾을 좌표 변환(얼굴 텍스처 정렬). 가림 판정은 모델 좌표 그대로."""
+        self.warp = warp or NoWarp()
         pts = surface_samples(v, tris)
         self.front, self.back, self.sides = front, back, sides
         self.d_front = DepthMap(front, pts, 0, 2, +1)
@@ -72,8 +82,9 @@ class Projector:
         """skin: 머리카락 픽셀을 쓰면 안 되는 점(목·몸). with_known: 믿을 만한 사진 픽셀이 있었는지도 돌려준다."""
         x, y, z = p.T
         nx, nz = n[:, 0], n[:, 2]
-        cf, of = self.front.sample(x, y, skin)
-        cb, ob = self.back.sample(x, y, skin)
+        fu, fy = self.warp.front_uv(p)
+        cf, of = self.front.sample(fu, fy, skin)
+        cb, ob = self.back.sample(fu, fy, skin)
         of *= self.d_front.visible(p)
         ob *= self.d_back.visible(p)
         # 옆을 향한 면(nz≈0)에서는 정면·후면 사진을 반반 섞어 경계가 계단처럼 보이지 않게 한다
@@ -86,7 +97,7 @@ class Projector:
         for s, d_r, d_l in zip(self.sides, self.d_right, self.d_left):
             right = nx < 0
             q = np.where(right[:, None], p, mirrored)
-            c, o = s.sample(q[:, 2], q[:, 1], skin)
+            c, o = s.sample(*self.warp.side_uv(q), skin)
             vis = np.where(right, d_r.visible(p), d_l.visible(mirrored))
             w = nx**2 * o * vis * side_ok / len(self.sides)
             acc += c * w[:, None]
