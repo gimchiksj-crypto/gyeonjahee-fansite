@@ -45,6 +45,18 @@ FRONT_BUST_TOP_ROW = 330
 FRONT_BUST_BOTTOM_ROW = 525
 BUST_X = 0.07  # 가슴 중심의 좌우 위치(미터)
 BUST_R = 0.075  # 가슴 덩어리 반경(미터)
+HEAD_CHIN_DROP = 0.02  # 정면 턱선 아래로 머리 타원체를 얼마나 내릴지(미터)
+NECK_MIN_HALF = 0.056  # 목 반지름 최소값(미터)
+SHOULDER_SLOPE = 0.06  # 어깨선 위 승모근 경사 높이(미터)
+
+
+def background_tinted(rgb: np.ndarray) -> np.ndarray:
+    """배경색이 섞인 픽셀(머리카락 가닥 사이, 윤곽 테두리). 빨간 반바지는 제외."""
+    a = rgb.astype(float)
+    bg = np.median(np.concatenate([a[:, :25], a[:, -25:]], 1), axis=1)
+    dist = np.linalg.norm(a - bg[:, None, :], axis=2)
+    shorts = a[..., 1] - a[..., 2] < (bg[:, 1] - bg[:, 2])[:, None] - 14
+    return (dist < 90) & ~shorts
 
 
 def segment(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -76,7 +88,10 @@ class View:
 
     def __init__(self, rgb: np.ndarray, mask: np.ndarray, center_rows: tuple[int, int]):
         self.rgb, self.mask = rgb, mask
-        self.inner = ndi.binary_erosion(mask, iterations=3)
+        self.inner = ndi.binary_erosion(mask, iterations=3) & ~ndi.binary_dilation(background_tinted(rgb), iterations=2)
+        # 실루엣 밖은 가장 가까운 안쪽 픽셀 색으로 채운다: 표면이 사진 경계를 살짝 넘어도 배경색이 묻지 않게
+        _, (ri, ci) = ndi.distance_transform_edt(~self.inner, return_indices=True)
+        self.filled = rgb[ri, ci]
         self.hair = mask & (rgb.astype(float).mean(2) < 70)
         self.h, self.w = mask.shape
         rows = np.where(mask.any(1))[0]
@@ -134,8 +149,9 @@ def side_profile(front: View, side: View, ys: np.ndarray):
     zb[j_sep : j_sh + 1] = np.maximum(zb[j_sep : j_sh + 1], line - 0.01)
 
     ok = ~np.isnan(zf)
-    zf[ok] = ndi.median_filter(zf[ok], 5)
-    zb[ok] = ndi.median_filter(zb[ok], 5)
+    # 두 사진의 미세한 차이로 생기는 가로 주름을 없애려고 세로로 한 번 더 부드럽게
+    zf[ok] = ndi.gaussian_filter1d(ndi.median_filter(zf[ok], 5), 3)
+    zb[ok] = ndi.gaussian_filter1d(ndi.median_filter(zb[ok], 5), 3)
 
     # 가슴 구간: 위·아래 경계를 이은 선을 흉곽 앞면으로 보고, 튀어나온 만큼을 가슴으로 뺀다
     bust = np.zeros(len(ys))
@@ -146,6 +162,8 @@ def side_profile(front: View, side: View, ys: np.ndarray):
     base = np.interp(ys[band], [ys[j_bot], ys[j_top]], [zf[j_bot], zf[j_top]])
     bust[band] = np.clip(zf[band] - base, 0, None)
     zf[band] = np.minimum(zf[band], base)
+    # 가슴 아래쪽이 선반처럼 끊기지 않게 세로로 부드럽게
+    bust = ndi.gaussian_filter1d(bust, 3)
     return zf, zb, bust
 
 
@@ -171,6 +189,28 @@ def build_volume(front: View, sides: list[View]):
     core_half = (core[1] - core[0]) / 2 * front.scale * 1.05
     arm_r = np.median([r[1] - r[0] for r in below if r != core]) / 2 * front.scale
 
+    def body_run(fr, row):
+        rs = [r for r in runs(row) if r[0] <= front.center < r[1]]
+        return ((rs[0][0] - front.center) * front.scale, (rs[0][1] - front.center) * front.scale) if rs else None
+
+    # 머리: 사진마다 머리카락 윤곽이 달라서 실루엣 그대로 쓰면 버섯 모양이 된다.
+    # 머리 위쪽 70%에서 잰 폭·깊이로 타원체를 잡고, 턱 쪽은 타원체를 따라 좁힌다
+    y_top = max(y for y in ys if front.row_of(y) >= front.top)
+    y_chin = front.row_to_height(FRONT_CHIN_ROW) - HEAD_CHIN_DROP
+    head_cy, head_ry = (y_top + y_chin) / 2, (y_top - y_chin) / 2
+    upper = [j for j, y in enumerate(ys) if y_chin + 0.6 * (y_top - y_chin) < y <= y_top and not np.isnan(zf_all[j])]
+    head_rx = max((lambda r: (r[1] - r[0]) / 2 if r else 0)(body_run(0, front.mask[int(round(front.row_of(ys[j])))])) for j in upper)
+    jz = max(upper, key=lambda j: zf_all[j] - zb_all[j])
+    head_rz = (zf_all[jz] - zb_all[jz]) / 2
+    head_cz = (zf_all[jz] + zb_all[jz]) / 2
+
+    # 목·어깨: 머리카락에 가려진 부분은 해부학적 최소값과 어깨 경사로 보정한다
+    y_sh = front.row_to_height(FRONT_SHOULDER_ROW)
+    sh_run = body_run(0, front.mask[FRONT_SHOULDER_ROW + 5])
+    sh_half = (sh_run[1] - sh_run[0]) / 2
+    j_sh = int(np.searchsorted(ys, y_sh))
+    sh_zc, sh_zd = (zf_all[j_sh] + zb_all[j_sh]) / 2, (zf_all[j_sh] - zb_all[j_sh]) / 2
+
     def fill(ix, j, lo, hi):
         inside = (zs[None, :] >= lo[:, None]) & (zs[None, :] <= hi[:, None])
         vol[ix, j, :] = np.maximum(vol[ix, j, :], inside)
@@ -181,12 +221,23 @@ def build_volume(front: View, sides: list[View]):
             continue
         zb, zf, bust = zb_all[j], zf_all[j], bust_all[j]
         zc, zd = (zb + zf) / 2, (zf - zb) / 2
+        head = y > y_chin
+        neck = in_neck_band(front, y) and not head
+        if head:
+            # 아래쪽(턱)은 덜 뾰족하게: 지수가 클수록 각진 턱
+            p = 2.0 if y > head_cy else 2.6
+            k = max(0.0, 1 - abs((y - head_cy) / head_ry) ** p) ** (1 / p)
+            zc, zd = head_cz, head_rz * k
+        elif neck:
+            # 목 최소 굵기, 어깨선 위 SHOULDER_SLOPE 구간은 승모근 경사로 어깨 깊이까지 키운다
+            s = np.clip(1 - (y - y_sh) / SHOULDER_SLOPE, 0, 1) ** 2
+            zd = max(zd, NECK_MIN_HALF) + (sh_zd - max(zd, NECK_MIN_HALF)) * s
+            zc = zc + (sh_zc - zc) * s
 
         row = front.mask[fr]
         pieces = []
         if in_neck_band(front, y):
-            # 목 주변: 늘어진 머리카락·머리 묶음은 몸통 폭에서 빼고 따로 둥글게 만든다
-            pieces += [(a, b, "hair") for a, b in runs(row & front.hair[fr])]
+            # 목 주변: 늘어진 머리카락·머리 묶음은 사진마다 모양이 달라 덩어리로 튀어나오므로 뺀다
             row = row & ~front.hair[fr]
         for a, b in runs(row):
             is_body = a <= front.center < b or fr >= FRONT_CROTCH_ROW
@@ -198,14 +249,24 @@ def build_volume(front: View, sides: list[View]):
             xc, xw = (xa + xb) / 2, (xb - xa) / 2
             if xw < 2 * VOXEL:
                 continue
+            if kind == "body" and head:
+                hw = min(xw, head_rx * k)
+                xa, xb = xc - hw, xc + hw
+                xw = hw
+            elif kind == "body" and neck:
+                hw = max(xw, NECK_MIN_HALF)
+                hw = hw + (max(hw, sh_half) - hw) * s
+                xa, xb = xc - hw, xc + hw
+                xw = hw
+            elif head or neck:
+                continue  # 머리·목 옆으로 삐져나온 머리카락은 버린다
             ix = (xs >= xa) & (xs <= xb)
             u = xs[ix]
-            if kind != "body":
-                # 팔·머리카락: 원형 단면 (머리카락은 몸 뒤쪽에 붙인다)
-                c = zc if kind == "limb" else zc - zd * 0.4
+            if kind == "limb":
+                # 팔: 원형 단면
                 half = np.sqrt(np.clip(xw**2 - (u - xc) ** 2, 0, None))
-                fill(ix, j, c - half, c + half)
-                arm_map[ix, j] = kind == "limb"
+                fill(ix, j, zc - half, zc + half)
+                arm_map[ix, j] = 1
                 continue
 
             attached_arms = FRONT_SHOULDER_ROW < fr < FRONT_ARMPIT_ROW and xw > core_half
@@ -214,7 +275,7 @@ def build_volume(front: View, sides: list[View]):
             half = zd * np.sqrt(1 - t**2)
             # 가슴: 좌우 두 덩어리로 앞면에만 더한다
             lobe = np.clip(1 - ((np.abs(u - xc) - BUST_X) / BUST_R) ** 2, 0, None)
-            front_edge = zc + half + bust * np.sqrt(lobe)
+            front_edge = zc + half + bust * lobe ** 0.7
             fill(ix, j, zc - half, front_edge)
             if attached_arms:
                 # 어깨~겨드랑이: 몸통 바깥쪽은 팔 원통으로 잇는다
@@ -230,7 +291,7 @@ def build_volume(front: View, sides: list[View]):
 
     # 세로 방향을 더 흐려서 높이별 단면 사이의 계단을 없앤다
     vol = ndi.gaussian_filter(vol, (1.3, 2.6, 1.3))
-    arm_map = ndi.gaussian_filter(arm_map, 3)
+    arm_map = ndi.gaussian_filter(ndi.binary_dilation(arm_map > 0, iterations=3).astype(np.float32), 2)
     return vol, arm_map, (xs[0], ys[0], zs[0])
 
 
@@ -238,7 +299,7 @@ def sample(view: View, cols: np.ndarray, rows: np.ndarray):
     c = np.clip(np.round(cols).astype(int), 0, view.w - 1)
     r = np.clip(np.round(rows).astype(int), 0, view.h - 1)
     ok = view.inner[r, c] & (cols >= 0) & (cols < view.w) & (rows >= 0) & (rows < view.h)
-    return view.rgb[r, c].astype(float), ok.astype(float)
+    return view.filled[r, c].astype(float), ok.astype(float)
 
 
 def colorize(verts, normals, side_ok, front: View, back: View, side: View, side2: View):
@@ -252,11 +313,17 @@ def colorize(verts, normals, side_ok, front: View, back: View, side: View, side2
     right = (nx < 0)[:, None]
     cs = np.where(right, cs2, cs1)
     os_ = np.where(right[:, 0], os2, os1)
-    wf = np.clip(nz, 0, None) ** 2 * of + 1e-4
-    wb = np.clip(-nz, 0, None) ** 2 * ob
-    ws = nx**2 * os_ * side_ok
+    # 옆을 향한 면(nz≈0)에서는 정면·후면 사진을 반반 섞어 경계가 계단처럼 보이지 않게 한다
+    wf = np.clip(nz + 0.25, 0, None) ** 2 * of + 1e-4
+    wb = np.clip(-nz + 0.25, 0, None) ** 2 * ob
+    # 측면 사진은 바깥쪽 면만 보여준다: 허벅지 안쪽처럼 몸 중심을 향한 면에는 쓰지 않는다
+    outward = np.where(np.abs(x) > 0.03, np.clip(np.sign(x) * nx * 5, 0, 1), 1)
+    ws = nx**2 * os_ * side_ok * outward
     total = wf + wb + ws
     col = (cf * wf[:, None] + cb * wb[:, None] + cs * ws[:, None]) / total[:, None]
+    # 어느 사진에도 안 잡히는 면은 정면/후면 중 가까운 쪽 색(경계 밖은 채워 둔 색)
+    fallback = np.where((nz >= 0)[:, None], cf, cb)
+    col = np.where((total < 0.01)[:, None], fallback, col)
     return np.clip(col, 0, 255).astype(np.uint8)
 
 
@@ -324,11 +391,40 @@ def write_glb(path: Path, verts, normals, colors, faces):
 def save_texture(view: View, path: Path, mirror: bool = False):
     # 가장자리의 배경색 번짐을 피하려고 마스크를 살짝 줄여서 알파로 쓴다
     alpha = ndi.binary_erosion(view.mask, iterations=3)
-    rgba = np.dstack([view.rgb, (alpha * 255).astype(np.uint8)])
+    rgba = np.dstack([view.filled, (alpha * 255).astype(np.uint8)])
     img = Image.fromarray(rgba, "RGBA")
     if mirror:
         img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     img.save(path, "WEBP", quality=88)
+
+
+def register_to(front: View, other: View) -> View:
+    """다른 사진을 행마다 좌우로 늘이고 줄여서 실루엣을 정면 사진에 맞춘다.
+
+    사진끼리 팔다리 위치가 조금씩 달라서, 그대로 투영하면 허벅지 안쪽 같은 곳에
+    엉뚱한 픽셀이 묻는다. 같은 높이에서 덩어리(팔·몸통·다리) 개수가 같으면
+    덩어리 경계끼리 이어 붙이고, 개수가 다르면 축척만 맞춘다.
+    """
+    rows = np.arange(front.h)
+    src_rows = np.clip(np.round(other.row_of(front.row_to_height(rows))).astype(int), 0, other.h - 1)
+    cols = np.arange(front.w, dtype=float)
+    base = other.center + (cols - front.center) * front.scale / other.scale
+    offset = np.zeros((front.h, front.w))
+    for r in rows:
+        fr = runs(front.mask[r])
+        orr = runs(other.mask[src_rows[r]])
+        if not fr or len(fr) != len(orr):
+            continue
+        knots_f = np.array([e for run in fr for e in run], float)
+        knots_o = np.array([e for run in orr for e in run], float)
+        offset[r] = np.interp(cols, knots_f, knots_o - np.interp(knots_f, cols, base))
+    offset = ndi.gaussian_filter1d(offset, 4, axis=0)  # 행마다 튀지 않게
+    src_cols = np.clip(np.round(base[None, :] + offset).astype(int), 0, other.w - 1)
+    rgb = other.rgb[src_rows[:, None], src_cols]
+    mask = front.mask & other.mask[src_rows[:, None], src_cols]
+    out = View(rgb, mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
+    out.top, out.bottom, out.scale, out.center = front.top, front.bottom, front.scale, front.center
+    return out
 
 
 def side_view(path: Path) -> View:
@@ -352,7 +448,7 @@ def main():
     b_rgb, b_mask = b_rgb[:, ::-1].copy(), b_mask[:, ::-1].copy()
 
     front = View(f_rgb, f_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
-    back = View(b_rgb, b_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
+    back = register_to(front, View(b_rgb, b_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW)))
     side = side_view(SRC / "side.png")
     side2 = side_view(SRC / "side2.png")
 

@@ -94,6 +94,7 @@
       controls.autoRotateSpeed = 1.6;
       controls.minDistance = 0.6;
       controls.maxDistance = 6;
+      window.viewer = { camera, controls }; // 콘솔에서 시점 조정용
 
       const floor = new THREE.Mesh(
         new THREE.CircleGeometry(0.7, 64),
@@ -145,11 +146,14 @@
               vec4 cs = n.x >= 0.0
                 ? texture2D(texSide, toUV(side, scales.z, vPos.z, vPos.y, false))
                 : texture2D(texSide2, toUV(side2, scales.w, vPos.z, vPos.y, false));
-              float wf = pow(max(n.z, 0.0), 2.0) * step(0.5, cf.a);
-              float wb = pow(max(-n.z, 0.0), 2.0) * step(0.5, cb.a);
-              float ws = n.x * n.x * step(0.5, cs.a) * vColor.a;
+              // 옆을 향한 면(n.z≈0)에서는 정면·후면 사진을 반반 섞어 경계가 계단처럼 보이지 않게 한다
+              float wf = pow(max(n.z + 0.25, 0.0), 2.0) * step(0.5, cf.a);
+              float wb = pow(max(-n.z + 0.25, 0.0), 2.0) * step(0.5, cb.a);
+              // 측면 사진은 바깥쪽 면만 보여준다: 허벅지 안쪽처럼 몸 중심을 향한 면에는 쓰지 않는다
+              float outward = abs(vPos.x) > 0.03 ? clamp(sign(vPos.x) * n.x * 5.0, 0.0, 1.0) : 1.0;
+              float ws = n.x * n.x * step(0.5, cs.a) * vColor.a * outward;
               float total = wf + wb + ws;
-              vec3 c = total > 0.02 ? (cf.rgb * wf + cb.rgb * wb + cs.rgb * ws) / total : vColor.rgb;
+              vec3 c = total > 0.01 ? (cf.rgb * wf + cb.rgb * wb + cs.rgb * ws) / total : (n.z >= 0.0 ? cf.rgb : cb.rgb);
               float lambert = max(dot(normalize(vViewNormal), lightDir), 0.0);
               gl_FragColor = vec4(c * (0.78 + 0.32 * lambert), 1.0);
               #include <colorspace_fragment>
