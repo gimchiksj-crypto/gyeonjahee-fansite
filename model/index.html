@@ -110,10 +110,12 @@
             texFront: { value: tex.front },
             texBack: { value: tex.back },
             texSide: { value: tex.side },
+            texSide2: { value: tex.side2 },
             front: { value: view(proj.front) },
             back: { value: view(proj.back) },
             side: { value: view(proj.side) },
-            scales: { value: new THREE.Vector3(proj.front.scale, proj.back.scale, proj.side.scale) },
+            side2: { value: view(proj.side2) },
+            scales: { value: new THREE.Vector4(proj.front.scale, proj.back.scale, proj.side.scale, proj.side2.scale) },
             lightDir: { value: new THREE.Vector3(0.4, 0.7, 0.6).normalize() },
           },
           vertexShader: `
@@ -125,9 +127,9 @@
               gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }`,
           fragmentShader: `
-            uniform sampler2D texFront, texBack, texSide;
-            uniform vec4 front, back, side; // width, height, bottom, center
-            uniform vec3 scales; uniform vec3 lightDir;
+            uniform sampler2D texFront, texBack, texSide, texSide2;
+            uniform vec4 front, back, side, side2; // width, height, bottom, center
+            uniform vec4 scales; uniform vec3 lightDir;
             varying vec3 vPos; varying vec3 vNormal; varying vec3 vViewNormal; varying vec4 vColor;
             vec2 toUV(vec4 v, float s, float u, float y, bool mirror) {
               float col = v.w + u / s;
@@ -139,7 +141,10 @@
               vec3 n = normalize(vNormal);
               vec4 cf = texture2D(texFront, toUV(front, scales.x, vPos.x, vPos.y, false));
               vec4 cb = texture2D(texBack, toUV(back, scales.y, vPos.x, vPos.y, true));
-              vec4 cs = texture2D(texSide, toUV(side, scales.z, vPos.z, vPos.y, false));
+              // 왼쪽 옆면은 첫 측면 사진, 오른쪽 옆면은 두 번째 측면 사진
+              vec4 cs = n.x >= 0.0
+                ? texture2D(texSide, toUV(side, scales.z, vPos.z, vPos.y, false))
+                : texture2D(texSide2, toUV(side2, scales.w, vPos.z, vPos.y, false));
               float wf = pow(max(n.z, 0.0), 2.0) * step(0.5, cf.a);
               float wb = pow(max(-n.z, 0.0), 2.0) * step(0.5, cb.a);
               float ws = n.x * n.x * step(0.5, cs.a) * vColor.a;
@@ -163,16 +168,17 @@
         });
 
       try {
-        const [gltf, proj, front, back, side] = await Promise.all([
+        const [gltf, proj, front, back, side, side2] = await Promise.all([
           new GLTFLoader().loadAsync("gyeonjahee.glb"),
           fetch("projection.json").then((r) => r.json()),
           loadTex("front"),
           loadTex("back"),
           loadTex("side"),
+          loadTex("side2"),
         ]);
         const mesh = gltf.scene.getObjectByProperty("isMesh", true);
         const materials = {
-          photo: photoMaterial(proj, { front, back, side }),
+          photo: photoMaterial(proj, { front, back, side, side2 }),
           vertex: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
           clay: new THREE.MeshStandardMaterial({ color: 0xe8d6cf, roughness: 0.6 }),
         };

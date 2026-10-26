@@ -1,4 +1,4 @@
-"""정면·측면·후면 사진 3장으로 3D 모델(GLB)을 만든다.
+"""정면·후면·측면(2장) 사진으로 3D 모델(GLB)을 만든다.
 
 방식: 실루엣 기반 복원.
   1. 단색 배경을 빼서 사진마다 인물 마스크를 만든다.
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import struct
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -152,13 +153,17 @@ def in_neck_band(front: View, y: float) -> bool:
     return front.row_to_height(FRONT_SHOULDER_ROW) < y < front.row_to_height(FRONT_CHIN_ROW)
 
 
-def build_volume(front: View, side: View):
+def build_volume(front: View, sides: list[View]):
     xs = np.arange(-0.48, 0.48, VOXEL)
     ys = np.arange(-0.01, HEIGHT_M + 0.02, VOXEL)
     zs = np.arange(-0.22, 0.22, VOXEL)
     vol = np.zeros((len(xs), len(ys), len(zs)), np.float32)
     arm_map = np.zeros((len(xs), len(ys)), np.float32)  # 팔인 곳(측면 사진을 쓰지 않을 곳)
-    zf_all, zb_all, bust_all = side_profile(front, side, ys)
+    # 측면 사진이 여러 장이면 깊이 윤곽을 평균 낸다
+    profiles = np.array([side_profile(front, side, ys) for side in sides])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # 사람이 없는 높이는 전부 NaN
+        zf_all, zb_all, bust_all = np.nanmean(profiles, axis=0)
 
     # 겨드랑이 바로 아래 몸통 폭과 팔 굵기: 팔이 몸통에 붙어 보이는 어깨 구간에 쓴다
     below = runs(front.mask[FRONT_ARMPIT_ROW + 10])
@@ -236,12 +241,17 @@ def sample(view: View, cols: np.ndarray, rows: np.ndarray):
     return view.rgb[r, c].astype(float), ok.astype(float)
 
 
-def colorize(verts, normals, side_ok, front: View, back: View, side: View):
+def colorize(verts, normals, side_ok, front: View, back: View, side: View, side2: View):
     x, y, z = verts.T
     nx, _, nz = normals.T
     cf, of = sample(front, front.col_of(x), front.row_of(y))
     cb, ob = sample(back, back.col_of(x), back.row_of(y))  # 후면은 미리 좌우를 뒤집어 둠
-    cs, os_ = sample(side, side.col_of(z), side.row_of(y))
+    # 왼쪽 옆면(+x)은 첫 측면 사진, 오른쪽 옆면(-x)은 두 번째 측면 사진(좌우 대칭 가정)
+    cs1, os1 = sample(side, side.col_of(z), side.row_of(y))
+    cs2, os2 = sample(side2, side2.col_of(z), side2.row_of(y))
+    right = (nx < 0)[:, None]
+    cs = np.where(right, cs2, cs1)
+    os_ = np.where(right[:, 0], os2, os1)
     wf = np.clip(nz, 0, None) ** 2 * of + 1e-4
     wb = np.clip(-nz, 0, None) ** 2 * ob
     ws = nx**2 * os_ * side_ok
@@ -321,16 +331,9 @@ def save_texture(view: View, path: Path, mirror: bool = False):
     img.save(path, "WEBP", quality=88)
 
 
-def main():
-    f_rgb, f_mask = segment(SRC / "front.png")
-    b_rgb, b_mask = segment(SRC / "back.png")
-    s_rgb, s_mask = segment(SRC / "side.png")
-    # 후면은 좌우를 뒤집어서 정면과 같은 x축을 쓰게 한다
-    b_rgb, b_mask = b_rgb[:, ::-1].copy(), b_mask[:, ::-1].copy()
-
-    front = View(f_rgb, f_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
-    back = View(b_rgb, b_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
-    side = View(s_rgb, s_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
+def side_view(path: Path) -> View:
+    rgb, mask = segment(path)
+    side = View(rgb, mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
     # 측면 깊이 중심은 몸통 덩어리 기준으로 다시 잡는다
     body_cols = []
     for r in range(side.top + (side.bottom - side.top) // 3, side.top + (side.bottom - side.top) // 2):
@@ -339,8 +342,21 @@ def main():
             s0, s1 = max(rs, key=lambda q: q[1] - q[0])
             body_cols.append((s0 + s1) / 2)
     side.center = float(np.median(body_cols))
+    return side
 
-    vol, arm_map, origin = build_volume(front, side)
+
+def main():
+    f_rgb, f_mask = segment(SRC / "front.png")
+    b_rgb, b_mask = segment(SRC / "back.png")
+    # 후면은 좌우를 뒤집어서 정면과 같은 x축을 쓰게 한다
+    b_rgb, b_mask = b_rgb[:, ::-1].copy(), b_mask[:, ::-1].copy()
+
+    front = View(f_rgb, f_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
+    back = View(b_rgb, b_mask, (FRONT_ARMPIT_ROW, FRONT_CROTCH_ROW))
+    side = side_view(SRC / "side.png")
+    side2 = side_view(SRC / "side2.png")
+
+    vol, arm_map, origin = build_volume(front, [side, side2])
     verts, faces, normals, _ = marching_cubes(vol, 0.5, spacing=(VOXEL,) * 3)
     verts += np.array(origin)
     # 표면 법선이 바깥을 향하게 맞춘다
@@ -356,7 +372,7 @@ def main():
     ax = np.clip(np.round((verts[:, 0] - origin[0]) / VOXEL).astype(int), 0, arm_map.shape[0] - 1)
     ay = np.clip(np.round((verts[:, 1] - origin[1]) / VOXEL).astype(int), 0, arm_map.shape[1] - 1)
     side_ok = 1 - np.clip(arm_map[ax, ay] * 1.5, 0, 1)
-    rgb = colorize(verts, normals, side_ok, front, back, side)
+    rgb = colorize(verts, normals, side_ok, front, back, side, side2)
     colors = np.concatenate([rgb, np.round(side_ok * 255).astype(np.uint8)[:, None]], 1)
     # 바닥이 y=0, 키 방향이 +y, 정면이 +z
     write_glb(OUT / "gyeonjahee.glb", verts, normals, colors, faces)
@@ -366,12 +382,14 @@ def main():
     save_texture(front, tex / "front.webp")
     save_texture(back, tex / "back.webp", mirror=True)  # 원본 방향으로 저장
     save_texture(side, tex / "side.webp")
+    save_texture(side2, tex / "side2.webp")
     (OUT / "projection.json").write_text(
         json.dumps(
             {
                 "front": front.params(),
                 "back": {**back.params(), "mirrored": True},
                 "side": side.params(),
+                "side2": side2.params(),
             },
             indent=2,
         )
