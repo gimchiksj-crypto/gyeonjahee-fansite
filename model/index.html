@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>견자희 3D 모델</title>
+    <style>
+      :root {
+        --sky: #8edcff;
+        --gold: #f5c542;
+        --navy: #071a2b;
+        --text: #eaf6ff;
+        --muted: #b6d6ea;
+        --line: rgba(142, 220, 255, 0.28);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        color: var(--text);
+        font-family: "SUIT", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at 12% 8%, rgba(142, 220, 255, 0.22), transparent 30%),
+          radial-gradient(circle at 88% 10%, rgba(255, 207, 83, 0.18), transparent 24%),
+          linear-gradient(180deg, #04101b 0%, #081d31 45%, #0b2740 100%);
+        overflow: hidden;
+      }
+      #stage { position: fixed; inset: 0; }
+      header {
+        position: fixed; top: 0; left: 0; right: 0;
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 14px 16px; pointer-events: none;
+      }
+      header > * { pointer-events: auto; }
+      h1 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+      a { color: var(--sky); text-decoration: none; font-size: 14px; }
+      .panel {
+        position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+        max-width: calc(100% - 32px);
+        padding: 8px; border: 1px solid var(--line); border-radius: 18px;
+        background: rgba(6, 24, 40, 0.82); backdrop-filter: blur(8px);
+      }
+      button {
+        font: inherit; font-size: 13px; color: var(--text);
+        padding: 8px 12px; border-radius: 12px; cursor: pointer;
+        border: 1px solid var(--line); background: transparent;
+      }
+      button[aria-pressed="true"] { background: var(--gold); color: var(--navy); border-color: var(--gold); }
+      #status { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="status">모델 불러오는 중…</div>
+    <header>
+      <h1>견자희 3D 모델</h1>
+      <a href="../index.html">← 팬사이트로</a>
+    </header>
+    <div class="panel" role="toolbar" aria-label="보기 설정">
+      <button data-mode="photo" aria-pressed="true">사진 투영</button>
+      <button data-mode="vertex" aria-pressed="false">버텍스 컬러</button>
+      <button data-mode="clay" aria-pressed="false">형태만</button>
+      <button id="spin" aria-pressed="true">자동 회전</button>
+      <a id="download" href="gyeonjahee.glb" download><button tabindex="-1">GLB 받기</button></a>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      const stage = document.getElementById("stage");
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      stage.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 20);
+      camera.position.set(0, 0.95, 3.6);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.85, 0);
+      controls.enableDamping = true;
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 1.6;
+      controls.minDistance = 0.6;
+      controls.maxDistance = 6;
+
+      const floor = new THREE.Mesh(
+        new THREE.CircleGeometry(0.7, 64),
+        new THREE.MeshBasicMaterial({ color: 0x8edcff, transparent: true, opacity: 0.08 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      // 사진 3장을 표면 방향에 따라 섞어서 투영한다 (좌표 정렬값은 projection.json)
+      function photoMaterial(proj, tex) {
+        const view = (p) => new THREE.Vector4(p.width, p.height, p.bottom, p.center);
+        return new THREE.ShaderMaterial({
+          uniforms: {
+            texFront: { value: tex.front },
+            texBack: { value: tex.back },
+            texSide: { value: tex.side },
+            front: { value: view(proj.front) },
+            back: { value: view(proj.back) },
+            side: { value: view(proj.side) },
+            scales: { value: new THREE.Vector3(proj.front.scale, proj.back.scale, proj.side.scale) },
+            lightDir: { value: new THREE.Vector3(0.4, 0.7, 0.6).normalize() },
+          },
+          vertexShader: `
+            varying vec3 vPos; varying vec3 vNormal; varying vec3 vViewNormal; varying vec4 vColor;
+            attribute vec4 color; // rgb: 꼭짓점 색, a: 측면 사진을 써도 되는 정도(팔은 0)
+            void main() {
+              vPos = position; vNormal = normal; vColor = color;
+              vViewNormal = normalize(normalMatrix * normal);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }`,
+          fragmentShader: `
+            uniform sampler2D texFront, texBack, texSide;
+            uniform vec4 front, back, side; // width, height, bottom, center
+            uniform vec3 scales; uniform vec3 lightDir;
+            varying vec3 vPos; varying vec3 vNormal; varying vec3 vViewNormal; varying vec4 vColor;
+            vec2 toUV(vec4 v, float s, float u, float y, bool mirror) {
+              float col = v.w + u / s;
+              if (mirror) col = v.x - 1.0 - col;
+              float row = v.z - y / s;
+              return vec2((col + 0.5) / v.x, 1.0 - (row + 0.5) / v.y);
+            }
+            void main() {
+              vec3 n = normalize(vNormal);
+              vec4 cf = texture2D(texFront, toUV(front, scales.x, vPos.x, vPos.y, false));
+              vec4 cb = texture2D(texBack, toUV(back, scales.y, vPos.x, vPos.y, true));
+              vec4 cs = texture2D(texSide, toUV(side, scales.z, vPos.z, vPos.y, false));
+              float wf = pow(max(n.z, 0.0), 2.0) * step(0.5, cf.a);
+              float wb = pow(max(-n.z, 0.0), 2.0) * step(0.5, cb.a);
+              float ws = n.x * n.x * step(0.5, cs.a) * vColor.a;
+              float total = wf + wb + ws;
+              vec3 c = total > 0.02 ? (cf.rgb * wf + cb.rgb * wb + cs.rgb * ws) / total : vColor.rgb;
+              float lambert = max(dot(normalize(vViewNormal), lightDir), 0.0);
+              gl_FragColor = vec4(c * (0.78 + 0.32 * lambert), 1.0);
+              #include <colorspace_fragment>
+            }`,
+        });
+      }
+
+      const status = document.getElementById("status");
+      const texLoader = new THREE.TextureLoader();
+      const loadTex = (name) =>
+        texLoader.loadAsync(`textures/${name}.webp`).then((t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.minFilter = THREE.LinearFilter;
+          t.generateMipmaps = false;
+          return t;
+        });
+
+      try {
+        const [gltf, proj, front, back, side] = await Promise.all([
+          new GLTFLoader().loadAsync("gyeonjahee.glb"),
+          fetch("projection.json").then((r) => r.json()),
+          loadTex("front"),
+          loadTex("back"),
+          loadTex("side"),
+        ]);
+        const mesh = gltf.scene.getObjectByProperty("isMesh", true);
+        const materials = {
+          photo: photoMaterial(proj, { front, back, side }),
+          vertex: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
+          clay: new THREE.MeshStandardMaterial({ color: 0xe8d6cf, roughness: 0.6 }),
+        };
+        mesh.material = materials.photo;
+        scene.add(gltf.scene);
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.6));
+        const key = new THREE.DirectionalLight(0xffffff, 1.6);
+        key.position.set(1.5, 2.5, 2);
+        scene.add(key);
+        status.remove();
+
+        document.querySelectorAll("[data-mode]").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            mesh.material = materials[btn.dataset.mode];
+            document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b === btn));
+          })
+        );
+      } catch (err) {
+        status.textContent = "모델을 불러오지 못했어요: " + err.message;
+      }
+
+      const spin = document.getElementById("spin");
+      spin.addEventListener("click", () => {
+        controls.autoRotate = !controls.autoRotate;
+        spin.setAttribute("aria-pressed", controls.autoRotate);
+      });
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+      renderer.setAnimationLoop(() => {
+        controls.update();
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
