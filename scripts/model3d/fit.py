@@ -51,10 +51,10 @@ MODIFIERS = {
     "lowerarm_len": ("measure/measure-lowerarm-length-decr", "measure/measure-lowerarm-length-incr", -1, 1),
     "neck": ("measure/measure-neck-circ-decr", "measure/measure-neck-circ-incr", -1, 1),
     # 머리 크기는 사진(그림체라 머리가 작다)을 다 따라가지 않게 좁은 범위만
-    "head_width": ("head/head-scale-horiz-decr", "head/head-scale-horiz-incr", -0.5, 0.5),
-    "head_height": ("head/head-scale-vert-decr", "head/head-scale-vert-incr", -0.5, 0.5),
+    "head_width": ("head/head-scale-horiz-decr", "head/head-scale-horiz-incr", -0.8, 0.8),
+    "head_height": ("head/head-scale-vert-decr", "head/head-scale-vert-incr", -0.8, 0.8),
 }
-REGULARIZE = 0.0015  # 조절값을 0(평균 체형)으로 당기는 힘: 사진 오차에 끌려 과하게 비틀리지 않게
+REGULARIZE = 0.0006  # 조절값을 0(평균 체형)으로 당기는 힘: 사진 오차에 끌려 과하게 비틀리지 않게
 
 
 def line_angle(points: np.ndarray) -> float:
@@ -374,7 +374,7 @@ def residuals(body: Body, v: np.ndarray, photo: PhotoTargets, part: np.ndarray, 
     return np.concatenate(out)
 
 
-def fit_shape(body: Body, rots: dict, base_dir, front: View, sides: list[View], front_lm: dict, iterations: int = 10):
+def fit_shape(body: Body, rots: dict, base_dir, front: View, sides: list[View], front_lm: dict, iterations: int = 15):
     """체형 조절값을 레벤버그-마쿼트 방식으로 고른다."""
     sf = ShapeFit(body, rots, base_dir)
     photo = PhotoTargets(front, sides, front_lm)
