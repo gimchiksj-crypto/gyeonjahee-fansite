@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14121a">
+<title>OC Studio</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #14121a; --panel: #1f1c27; --line: #312c3d; --text: #ece8f4; --muted: #9a93aa;
+    --accent: #e58fb4; --accent-ink: #2a1320; --ok: #7fd3a6; --err: #ff8a8a;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, "Noto Sans KR", sans-serif; }
+  body { padding: env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom)); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); display: inline-block; margin-right: 6px; }
+  .dot.ok { background: var(--ok); }
+  #status { font-size: 12px; color: var(--muted); }
+  main { padding: 12px 16px; max-width: 720px; margin: 0 auto; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 14px; margin-bottom: 12px; }
+  h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pick { position: relative; aspect-ratio: 3/4; border: 1.5px dashed var(--line); border-radius: 12px;
+    display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 13px; overflow: hidden; }
+  .pick img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .pick input { position: absolute; inset: 0; opacity: 0; }
+  .pick .tag { position: absolute; left: 8px; bottom: 8px; background: #000a; color: #fff; padding: 2px 8px;
+    border-radius: 99px; font-size: 12px; z-index: 1; }
+  .pick .x { position: absolute; right: 6px; top: 6px; z-index: 2; background: #000a; color: #fff; border: 0;
+    border-radius: 99px; width: 28px; height: 28px; font-size: 16px; display: none; }
+  .pick.has .x { display: block; }
+  textarea, input[type=text], select { width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; }
+  textarea { min-height: 64px; resize: vertical; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 99px;
+    padding: 7px 12px; font: inherit; font-size: 13px; text-align: left; max-width: 100%; }
+  .chip[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row > * { flex: 1; }
+  .btn { border: 0; border-radius: 10px; padding: 11px 14px; font: inherit; font-weight: 600;
+    background: var(--line); color: var(--text); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn:disabled { opacity: .5; }
+  .field { margin-top: 12px; }
+  .field label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 9px; font: inherit; font-size: 13px; }
+  .seg button[aria-pressed=true] { background: var(--line); color: var(--text); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .gen-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg);
+    border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .gen-bar .btn { width: 100%; max-width: 720px; display: block; margin: 0 auto; padding: 14px; font-size: 16px; }
+  .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .cell { position: relative; aspect-ratio: 2/3; border-radius: 10px; overflow: hidden; background: var(--bg);
+    border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 6px; white-space: pre-line; }
+  .cell img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cell.error { color: var(--err); }
+  .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: s 0.9s linear infinite; margin: 0 auto 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: #000; display: none; flex-direction: column; }
+  .viewer.on { display: flex; }
+  .viewer img { flex: 1; min-height: 0; object-fit: contain; width: 100%; }
+  .viewer .bar { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .viewer .bar > * { flex: 1; text-align: center; text-decoration: none; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+  .viewer p { margin: 0; padding: 12px 16px 0; font-size: 13px; color: #ccc; }
+  #login { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: none;
+    flex-direction: column; justify-content: center; padding: 32px 24px; gap: 12px; }
+  #login.on { display: flex; }
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: var(--text);
+    color: var(--bg); padding: 9px 16px; border-radius: 99px; font-size: 14px; z-index: 40; display: none; max-width: 90vw; }
+  .muted { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OC Studio</h1>
+  <span id="status"><span class="dot"></span>연결 확인 중</span>
+</header>
+
+<main>
+  <section>
+    <h2>이미지</h2>
+    <div class="pickers">
+      <div class="pick" id="pickRef">
+        <span>외형 레퍼런스<br><small>탭해서 선택</small></span>
+        <span class="tag">레퍼런스</span>
+        <input type="file" accept="image/*" id="fileRef">
+      </div>
+      <div class="pick" id="pickSrc">
+        <span>구도·포즈 원본<br><small>선택 사항</small></span>
+        <span class="tag">원본</span>
+        <button class="x" id="clearSrc" aria-label="원본 지우기">×</button>
+        <input type="file" accept="image/*" id="fileSrc">
+      </div>
+    </div>
+    <p class="muted" id="refNote"></p>
+  </section>
+
+  <section>
+    <h2>고정 외형</h2>
+    <textarea id="character"></textarea>
+  </section>
+
+  <section>
+    <h2>복장 <span class="muted" id="outfitCount"></span></h2>
+    <div class="chips" id="outfits"></div>
+    <div class="row">
+      <input type="text" id="newOutfit" placeholder="복장 직접 추가 (영어 태그 권장)">
+      <button class="btn" id="addOutfit" style="flex:0 0 auto">추가</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>설정</h2>
+    <div class="field">
+      <label>외형 고정 방식</label>
+      <div class="seg" id="preset">
+        <button data-v="plus">얼굴+헤어+분위기</button>
+        <button data-v="face">얼굴 위주</button>
+      </div>
+    </div>
+    <div class="field"><label>외형 고정 강도 <b id="ipv"></b></label>
+      <input type="range" id="ip_weight" min="0.3" max="1.2" step="0.05"></div>
+    <div class="field"><label>원본 변형 강도 <b id="dnv"></b></label>
+      <input type="range" id="denoise" min="0.3" max="0.95" step="0.05"></div>
+    <div class="field"><label>복장당 장수 <b id="cntv"></b></label>
+      <input type="range" id="count" min="1" max="6" step="1"></div>
+    <details class="field">
+      <summary>고급</summary>
+      <div class="field"><label>체크포인트</label><select id="ckpt"></select></div>
+      <div class="field">
+        <label>비율 (원본 없을 때)</label>
+        <div class="seg" id="ratio">
+          <button data-v="832x1216">세로</button>
+          <button data-v="1024x1024">정사각</button>
+          <button data-v="1216x832">가로</button>
+        </div>
+      </div>
+      <div class="field"><label>Steps <b id="stv"></b></label>
+        <input type="range" id="steps" min="15" max="50" step="1"></div>
+      <div class="field"><label>CFG <b id="cfv"></b></label>
+        <input type="range" id="cfg" min="3" max="10" step="0.5"></div>
+    </details>
+  </section>
+
+  <section>
+    <h2 style="display:flex;justify-content:space-between">결과
+      <button class="btn" id="clearDone" style="padding:4px 10px;font-size:12px">완료 비우기</button></h2>
+    <div class="gallery" id="gallery"><p class="muted">아직 생성한 이미지가 없어요.</p></div>
+  </section>
+</main>
+
+<div class="gen-bar"><button class="btn primary" id="go">생성하기</button></div>
+
+<div class="viewer" id="viewer">
+  <p id="vInfo"></p>
+  <img id="vImg" alt="">
+  <div class="bar">
+    <a class="btn" id="vSave" download>저장</a>
+    <button class="btn" id="vUse">원본으로</button>
+    <button class="btn" id="vClose">닫기</button>
+  </div>
+</div>
+
+<div id="login">
+  <h1 style="margin:0 0 8px">OC Studio</h1>
+  <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">
+  <button class="btn primary" id="loginBtn">들어가기</button>
+  <p class="muted" id="loginErr"></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("oc." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("oc." + k, JSON.stringify(v)); } catch {} },
+};
+const S = {
+  ref: null, source: null, useSource: false, hasServerRef: false, hasServerSource: false,
+  outfits: [], selected: new Set(store.get("selected", [])), custom: store.get("custom", []),
+  preset: store.get("preset", "plus"), ratio: store.get("ratio", "832x1216"),
+};
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 2600);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (r.status === 401) { $("login").classList.add("on"); throw new Error("login"); }
+  if (r.status === 204) return {};
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+// 폰 사진은 크니까 긴 변 1536px로 줄여서 보낸다
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1536 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      res(c.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = () => rej(new Error("이미지를 읽을 수 없어요"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function showPick(el, url) {
+  el.classList.toggle("has", !!url);
+  let im = el.querySelector("img");
+  if (!url) { im && im.remove(); return; }
+  if (!im) { im = document.createElement("img"); el.prepend(im); }
+  im.src = url;
+}
+
+$("fileRef").onchange = async (e) => {
+  if (!e.target.files[0]) return;
+  S.ref = await shrink(e.target.files[0]); showPick($("pickRef"), S.ref); refNote();
+};
+$("fileSrc").onchange = async (e) => {
+  if (!e.target.files[0]) return;
+  S.source = await shrink(e.target.files[0]); S.useSource = true; showPick($("pickSrc"), S.source); refNote();
+};
+$("clearSrc").onclick = (e) => {
+  e.stopPropagation(); S.source = null; S.useSource = false; S.hasServerSource = false;
+  showPick($("pickSrc"), null); $("fileSrc").value = ""; refNote();
+};
+function refNote() {
+  const parts = [];
+  if (!S.ref && S.hasServerRef) parts.push("레퍼런스: 서버에 올려둔 이미지 사용");
+  parts.push(S.useSource ? "모드: img2img (원본 구도 유지)" : "모드: txt2img (새 구도)");
+  $("refNote").textContent = parts.join(" · ");
+}
+
+function renderOutfits() {
+  const box = $("outfits"); box.innerHTML = "";
+  const all = [...S.outfits, ...S.custom];
+  for (const o of all) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = o;
+    b.setAttribute("aria-pressed", S.selected.has(o));
+    b.onclick = () => {
+      S.selected.has(o) ? S.selected.delete(o) : S.selected.add(o);
+      store.set("selected", [...S.selected]); renderOutfits();
+    };
+    if (S.custom.includes(o)) b.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (confirm(`"${o}" 삭제할까요?`)) {
+        S.custom = S.custom.filter((x) => x !== o); S.selected.delete(o);
+        store.set("custom", S.custom); store.set("selected", [...S.selected]); renderOutfits();
+      }
+    };
+    box.append(b);
+  }
+  const n = all.filter((o) => S.selected.has(o)).length;
+  $("outfitCount").textContent = n ? `${n}개 선택` : "";
+}
+$("addOutfit").onclick = () => {
+  const v = $("newOutfit").value.trim(); if (!v) return;
+  if (!S.custom.includes(v) && !S.outfits.includes(v)) S.custom.push(v);
+  S.selected.add(v); store.set("custom", S.custom); store.set("selected", [...S.selected]);
+  $("newOutfit").value = ""; renderOutfits();
+};
+
+function seg(id, key) {
+  const el = $(id);
+  const paint = () => el.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === S[key]));
+  el.onclick = (e) => { if (e.target.dataset.v) { S[key] = e.target.dataset.v; store.set(key, S[key]); paint(); } };
+  paint();
+}
+seg("preset", "preset"); seg("ratio", "ratio");
+
+const sliders = { ip_weight: ["ipv", 0.8], denoise: ["dnv", 0.65], count: ["cntv", 2], steps: ["stv", 30], cfg: ["cfv", 6] };
+for (const [id, [out, def]] of Object.entries(sliders)) {
+  const el = $(id); el.value = store.get(id, def);
+  const paint = () => { $(out).textContent = el.value; store.set(id, +el.value); };
+  el.oninput = paint; paint();
+}
+$("character").oninput = (e) => store.set("character", e.target.value);
+$("ckpt").onchange = (e) => store.set("ckpt", e.target.value);
+
+async function loadConfig() {
+  const c = await api("/api/config");
+  $("login").classList.remove("on");
+  $("status").innerHTML = `<span class="dot ${c.comfy_ok ? "ok" : ""}"></span>${c.comfy_ok ? "ComfyUI 연결됨" : "ComfyUI 꺼짐"}`;
+  S.outfits = c.outfits; S.hasServerRef = c.has_ref; S.hasServerSource = c.has_source;
+  $("character").value = store.get("character", c.character);
+  const sel = $("ckpt"); sel.innerHTML = "";
+  for (const k of c.checkpoints) sel.add(new Option(k, k));
+  const saved = store.get("ckpt", null);
+  if (saved && c.checkpoints.includes(saved)) sel.value = saved;
+  renderOutfits(); refNote();
+}
+
+$("go").onclick = async () => {
+  const outfits = [...S.outfits, ...S.custom].filter((o) => S.selected.has(o));
+  if (!S.ref && !S.hasServerRef) return toast("외형 레퍼런스를 먼저 골라주세요");
+  if (!outfits.length) return toast("복장을 하나 이상 골라주세요");
+  const [w, h] = S.ratio.split("x").map(Number);
+  $("go").disabled = true;
+  try {
+    const r = await api("/api/generate", {
+      ref: S.ref, source: S.source, use_source: S.useSource, clear_source: !S.useSource,
+      character: $("character").value, outfits, count: +$("count").value,
+      preset: S.preset, ip_weight: +$("ip_weight").value, denoise: +$("denoise").value,
+      steps: +$("steps").value, cfg: +$("cfg").value, ckpt: $("ckpt").value, width: w, height: h,
+    });
+    // 한 번 올린 이미지는 서버가 기억하니 다음부턴 다시 안 보낸다
+    if (S.ref) { S.ref = null; S.hasServerRef = true; }
+    if (S.source) { S.source = null; S.hasServerSource = true; }
+    toast(`${r.queued.length}장 대기열에 넣었어요`);
+    $("gallery").scrollIntoView({ behavior: "smooth", block: "start" });
+    poll();
+  } catch (e) { if (e.message !== "login") toast(e.message); }
+  finally { $("go").disabled = false; }
+};
+
+let jobsCache = [];
+async function poll() {
+  clearTimeout(poll.t);
+  try { jobsCache = await api("/api/jobs"); renderGallery(); } catch {}
+  const busy = jobsCache.some((j) => j.status === "queued" || j.status === "running");
+  poll.t = setTimeout(poll, busy ? 2000 : 15000);
+}
+function renderGallery() {
+  const g = $("gallery"); g.innerHTML = "";
+  if (!jobsCache.length) { g.innerHTML = '<p class="muted">아직 생성한 이미지가 없어요.</p>'; return; }
+  for (const j of jobsCache) {
+    if (j.status === "done") {
+      for (const name of j.images) {
+        const d = document.createElement("div"); d.className = "cell";
+        const im = document.createElement("img"); im.loading = "lazy"; im.src = "/api/image/" + encodeURIComponent(name);
+        d.append(im); d.onclick = () => openViewer(name, j); g.append(d);
+      }
+    } else {
+      const d = document.createElement("div");
+      d.className = "cell" + (j.status === "error" ? " error" : "");
+      d.innerHTML = j.status === "error" ? "" : '<div><div class="spin"></div></div>';
+      const t = document.createElement("div");
+      t.textContent = j.status === "error" ? "실패: " + (j.error || "") : (j.status === "running" ? "생성 중" : "대기 중") + "\n" + j.outfit;
+      (d.firstChild || d).append(t); g.append(d);
+    }
+  }
+}
+$("clearDone").onclick = async () => { await api("/api/clear", {}); poll(); };
+
+let current = null;
+function openViewer(name, j) {
+  current = name;
+  $("vImg").src = "/api/image/" + encodeURIComponent(name);
+  $("vSave").href = $("vImg").src; $("vSave").download = name;
+  $("vInfo").textContent = `${j.outfit} · seed ${j.seed}`;
+  $("viewer").classList.add("on");
+}
+$("vClose").onclick = () => $("viewer").classList.remove("on");
+$("vUse").onclick = async () => {
+  const blob = await (await fetch("/api/image/" + encodeURIComponent(current))).blob();
+  S.source = await shrink(blob); S.useSource = true; showPick($("pickSrc"), S.source); refNote();
+  $("viewer").classList.remove("on"); toast("원본으로 설정했어요"); window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+$("loginBtn").onclick = async () => {
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: $("pw").value }) });
+    if (!r.ok) throw new Error((await r.json()).error);
+    $("pw").value = ""; $("loginErr").textContent = "";
+    await loadConfig(); poll();
+  } catch (e) { $("loginErr").textContent = e.message; }
+};
+$("pw").onkeydown = (e) => e.key === "Enter" && $("loginBtn").click();
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+loadConfig().then(poll).catch(() => {});
+</script>
+</body>
+</html>
