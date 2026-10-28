@@ -7,12 +7,38 @@ ComfyUI + SDXL + IP-Adapter(Plus / Plus Face)로 **오리지널 캐릭터의 얼
 
 폰에서 원격으로 쓰는 앱은 [7번](#7-폰-앱-oc-studio--밖에서-원격으로-쓰기)을 보세요.
 
+## 0. Windows 빠른 시작 (RTX 4080 기준)
+
+1. **이 폴더를 영문 경로로 복사**: 예) `C:\AI\oc-img2img`
+   (한글·공백 경로는 Python 패키지가 깨질 수 있어요)
+2. **준비물 설치**: PowerShell에서 한 번만 실행
+   ```powershell
+   winget install --id Git.Git -e
+   winget install --id Python.Python.3.12 -e
+   winget install --id Tailscale.Tailscale -e
+   ```
+   설치 후 PowerShell 창을 닫았다 다시 여세요. NVIDIA 드라이버는 최신으로 맞춰주세요.
+3. **`setup.bat` 더블클릭**: 약 15~25분, 15GB 정도 받아요. 마지막에 `CUDA: True | NVIDIA GeForce RTX 4080`이 보이면 성공이에요.
+4. **`start.bat` 더블클릭**: 처음 한 번 폰 앱 비밀번호를 정해요. PC 브라우저에서 http://127.0.0.1:8787 로 동작을 확인하세요.
+5. **폰 연결**: 7-2, 7-3을 따라 Tailscale 주소로 접속하고 홈 화면에 설치해요.
+6. **(선택) `autostart.bat`**: 윈도우 로그인 때 자동으로 켜지게 등록해요. 해제는 `autostart.bat -Remove`예요.
+
+| 파일 | 하는 일 |
+|---|---|
+| `setup.bat` | ComfyUI·PyTorch(CUDA 12.8)·IP-Adapter·모델 설치 |
+| `start.bat` | ComfyUI + 폰 앱 서버 실행 (창 닫으면 종료) |
+| `stop.bat` | 창을 그냥 닫아서 남은 백그라운드 프로세스 정리 |
+| `autostart.bat` | 로그인 시 자동 실행 등록 + 절전 끄기 |
+| `logs\` | 문제 생기면 여기 `comfyui.err.log`, `server.err.log`를 확인 |
+
+RTX 4080(16GB)이면 SDXL 832×1216, 30스텝 기준 한 장에 대략 5~8초예요. 복장 8종 × 2장은 2분 안쪽이에요.
+
 ## 1. 요구 사양
 
 | 항목 | 권장 |
 |---|---|
 | GPU | NVIDIA VRAM 8GB 이상 (12GB+ 쾌적) |
-| Python | 3.10 ~ 3.12 |
+| Python | 3.12 (Windows 스크립트는 `py -3.12`로 고정) |
 | 디스크 | 약 15GB (SDXL 체크포인트 7GB 포함) |
 | 기타 | git, curl |
 
@@ -24,9 +50,9 @@ ComfyUI + SDXL + IP-Adapter(Plus / Plus Face)로 **오리지널 캐릭터의 얼
 SKIP_CKPT=1 ./setup.sh     # 체크포인트는 직접 넣을 때
 ```
 
-```powershell
-# Windows
-powershell -ExecutionPolicy Bypass -File setup.ps1          # 또는 -SkipCkpt
+```bat
+:: Windows — 더블클릭하거나 명령창에서
+setup.bat                  :: 체크포인트는 직접 넣을 때: setup.bat -SkipCkpt
 ```
 
 설치되는 것:
@@ -96,8 +122,8 @@ PC에서 ComfyUI랑 웹앱 서버를 켜두고, 폰(갤럭시 등)에서 앱처�
 ```bash
 APP_PASSWORD='8자이상비밀번호' ./start.sh                                   # Linux / macOS
 ```
-```powershell
-$env:APP_PASSWORD='8자이상비밀번호'; powershell -ExecutionPolicy Bypass -File start.ps1   # Windows
+```bat
+start.bat     :: Windows — 비밀번호는 처음 실행 때 정하고 .app_password 에 저장돼요
 ```
 
 서버는 기본적으로 PC 내부(127.0.0.1)에만 열려요. 외부 접속은 아래 Tailscale로만 받아요.

@@ -3,3 +3,5 @@ outputs/
 input/*
 !input/.gitkeep
 __pycache__/
+logs/
+.app_password

@@ -35,6 +35,11 @@ WEB = HERE / "web"
 OUT = HERE / "outputs" / "web"
 INPUT = HERE / "input"
 SESSION_SECRET = secrets.token_bytes(32)
+
+# 윈도우는 레지스트리 설정에 따라 .js를 text/plain으로 돌려줘서 서비스워커가 깨질 수 있다
+for _ext, _type in ((".js", "text/javascript"), (".webmanifest", "application/manifest+json"),
+                    (".png", "image/png"), (".html", "text/html")):
+    mimetypes.add_type(_type, _ext)
 MAX_BODY = 40 * 1024 * 1024
 
 jobs = {}           # id -> job dict
@@ -96,8 +101,6 @@ class Handler(BaseHTTPRequestHandler):
     def send_file(self, path, cache="no-cache"):
         data = path.read_bytes()
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        if path.suffix == ".webmanifest":
-            ctype = "application/manifest+json"
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", cache)
