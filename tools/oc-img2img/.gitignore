@@ -2,3 +2,4 @@ ComfyUI/
 outputs/
 input/*
 !input/.gitkeep
+__pycache__/
