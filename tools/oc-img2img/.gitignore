@@ -1,0 +1,4 @@
+ComfyUI/
+outputs/
+input/*
+!input/.gitkeep

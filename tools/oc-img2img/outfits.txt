@@ -1,0 +1,9 @@
+# 한 줄 = 복장 1종. 생성 시 character.txt 뒤에 붙습니다.
+white oversized knit sweater, denim shorts, cozy cafe interior
+black office suit, white blouse, pencil skirt, city street at dusk
+traditional korean hanbok, pastel colors, palace garden
+school-style blazer uniform, pleated skirt, cherry blossoms
+summer sundress, straw hat, beach, sunlight
+leather jacket, black jeans, neon-lit alley at night
+pajamas, messy bedroom, morning light
+gym wear, sports bra, leggings, fitness studio
